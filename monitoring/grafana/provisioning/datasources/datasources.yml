@@ -1,7 +1,10 @@
-# Person 6. Grafana gets two data sources automatically:
-#  - Prometheus: live rates, retries (from service /metrics)
-#  - PostgreSQL: exact totals straight from the tables (survive service restarts)
+# Person 6. Grafana data sources (auto-provisioned).
+#  - Prometheus : live rates, lag, surge, autopilot, API per copy
+#  - RideDB     : exact totals from the tables (local postgres OR Supabase - set GRAFANA_DB_* in .env)
 apiVersion: 1
+deleteDatasources:
+  - {name: BookingDB, orgId: 1}
+  - {name: PaymentDB, orgId: 1}
 datasources:
   - name: Prometheus
     uid: prom
@@ -10,16 +13,18 @@ datasources:
     url: http://prometheus:9090
     isDefault: true
 
-  - name: BookingDB
+  - name: RideDB
     uid: pg
     type: postgres
     access: proxy
-    url: postgres:5432
-    user: app
-    database: booking_db
+    url: $GRAFANA_DB_HOST
+    user: $GRAFANA_DB_USER
+    database: $GRAFANA_DB_NAME
     secureJsonData:
-      password: app
+      password: $GRAFANA_DB_PASSWORD
     jsonData:
-      database: booking_db
-      sslmode: disable
-      postgresVersion: 1600
+      database: $GRAFANA_DB_NAME
+      sslmode: $GRAFANA_DB_SSLMODE
+      postgresVersion: 1500
+      maxOpenConns: 5
+      timescaledb: false

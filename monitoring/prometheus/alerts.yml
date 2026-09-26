@@ -1,0 +1,50 @@
+# Person 6. Shown at http://localhost:9090/alerts and in the Grafana "Health" row.
+groups:
+  - name: ride-middleware
+    rules:
+      - alert: ServiceDown
+        expr: up{job!="kafka"} == 0
+        for: 30s
+        labels: {severity: critical}
+        annotations: {summary: "{{ $labels.job }} copy {{ $labels.instance }} is not answering"}
+
+      - alert: KafkaBrokerMissing
+        expr: kafka_brokers < 3
+        for: 15s
+        labels: {severity: warning}
+        annotations: {summary: "only {{ $value }} of 3 Kafka brokers up - still writing (min.insync=2)"}
+
+      - alert: UnderReplicatedPartitions
+        expr: sum(kafka_topic_partition_under_replicated_partition) > 0
+        for: 1m
+        labels: {severity: warning}
+        annotations: {summary: "{{ $value }} partitions have fewer than 3 copies"}
+
+      - alert: ConsumerLagHigh
+        expr: sum by (consumergroup) (kafka_consumergroup_lag) > 5000
+        for: 2m
+        labels: {severity: warning}
+        annotations: {summary: "{{ $labels.consumergroup }} is {{ $value }} messages behind (Autopilot should scale)"}
+
+      - alert: MessagesInDLQ
+        expr: sum(increase(records_dlq_total[10m])) > 0
+        labels: {severity: warning}
+        annotations: {summary: "payments moved to the DLQ - run dlq-replay after fixing the cause"}
+
+      - alert: PaymentMismatch
+        expr: max(reconciliation_mismatches) > 0
+        for: 5m
+        labels: {severity: warning}
+        annotations: {summary: "{{ $value }} completed rides without payment for 5 minutes"}
+
+      - alert: ApiErrors
+        expr: sum(rate(api_requests_total{status=~"5.."}[1m])) / clamp_min(sum(rate(api_requests_total[1m])), 1) > 0.05
+        for: 1m
+        labels: {severity: critical}
+        annotations: {summary: "more than 5% of API calls fail"}
+
+      - alert: DispatchSlow
+        expr: histogram_quantile(0.95, sum by (le) (rate(dispatch_seconds_bucket[5m]))) > 30
+        for: 5m
+        labels: {severity: warning}
+        annotations: {summary: "p95 time to find a driver is {{ $value }}s"}

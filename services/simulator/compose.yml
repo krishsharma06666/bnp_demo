@@ -1,0 +1,26 @@
+# Person 6 - the city (riders + drivers) and the consistency checker.
+#   More traffic:  RIDER_RPS=10 docker compose up -d simulator
+#   Stop it (for the race demo):  docker compose stop simulator
+x-base: &base {file: ../../infra/compose/app.yml, service: app}
+
+services:
+  simulator:
+    extends: *base
+    command: ["python", "-m", "services.simulator.simulator"]
+    environment:
+      RIDER_RPS: ${RIDER_RPS:-2}                # new bookings per second
+      ACCEPT_P: "0.60"                          # driver accepts an offer
+      REJECT_P: "0.25"                          # driver rejects (the rest ignore it -> timeout)
+    depends_on:
+      lb: {condition: service_started}
+      api: {condition: service_healthy}
+
+  reconciler:                                   # COMPLETED ride without payment -> re-request payment
+    extends: *base
+    command: ["python", "-m", "services.reconciler.reconciler"]
+    environment:
+      RECONCILE_INTERVAL: "30"
+      RECONCILE_GRACE_SECONDS: "120"
+    depends_on:
+      kafka-init: {condition: service_completed_successfully}
+      db-migrate: {condition: service_completed_successfully}
