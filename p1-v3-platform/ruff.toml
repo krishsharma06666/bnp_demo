@@ -1,0 +1,25 @@
+# Lint rules for CI (Person 1). Run: python -m ruff check .
+line-length = 120
+target-version = "py311"
+extend-exclude = ["data/generated"]
+
+[lint]
+select = ["E", "F", "W", "I", "B", "S", "UP"]
+ignore = [
+  "E501",   # long SQL strings / comments are fine
+  "E702",   # `print(...); return 1` one-liners in scripts
+  "S101",   # assert is how pytest works
+  "S311",   # random is for simulations, not crypto
+  "S104",   # services bind 0.0.0.0 INSIDE their container on purpose
+  "S603", "S607",  # chaos/test scripts call docker on purpose
+  "S608",   # SQL built from constants only (values always passed as parameters)
+  "B008",   # FastAPI Depends()/Header() defaults
+  "UP007", "UP045", "UP017", "UP035", "UP006",
+  "B905", "I001",
+  "B023",   # lambdas passed to with_db_retry run immediately, inside the same loop turn
+  "S110", "S112",  # deliberate: best-effort paths (Redis, cleanup) must never crash a service
+  "S108",   # heartbeat lives in the container's private tmpfs /tmp
+]
+
+[lint.per-file-ignores]
+"tests/*" = ["S", "B"]

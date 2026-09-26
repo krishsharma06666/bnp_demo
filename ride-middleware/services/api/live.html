@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Live Ride Tracker</title>
+<style>
+  :root { --bg:#0f1115; --card:#181b22; --line:#2a2f3a; --text:#e8eaf0; --muted:#8b93a7; --ok:#3ecf8e; --warn:#f5a524; --bad:#f25f5c; --accent:#6c8cff; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:var(--bg); color:var(--text); }
+  main { max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  p.sub { color: var(--muted); margin: 0 0 20px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 560px) { .grid { grid-template-columns: 1fr; } }
+  label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: .04em; }
+  input, select, button { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line); background: #11141a; color: var(--text); font: inherit; }
+  button { background: var(--accent); border: none; font-weight: 600; cursor: pointer; margin-top: 12px; }
+  button:disabled { opacity: .5; cursor: default; }
+  .row { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; background: #232836; }
+  .pill.ok { background: rgba(62,207,142,.15); color: var(--ok); }
+  .pill.warn { background: rgba(245,165,36,.15); color: var(--warn); }
+  .pill.bad { background: rgba(242,95,92,.15); color: var(--bad); }
+  ol.timeline { list-style: none; padding: 0; margin: 0; }
+  ol.timeline li { padding: 8px 0 8px 22px; border-left: 2px solid var(--line); position: relative; margin-left: 6px; }
+  ol.timeline li::before { content: ""; position: absolute; left: -7px; top: 13px; width: 12px; height: 12px; border-radius: 50%; background: var(--accent); }
+  ol.timeline li.done::before { background: var(--ok); }
+  ol.timeline li.fail::before { background: var(--bad); }
+  .t { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .muted { color: var(--muted); }
+  code { font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Live Ride Tracker</h1>
+  <p class="sub">Book a ride and watch it move through Kafka → validator → database → dispatcher → driver → trip → payment, live.</p>
+
+  <form class="card" id="book">
+    <div class="grid">
+      <div><label for="key">Rider API key</label><input id="key" type="text" autocomplete="off" spellcheck="false" placeholder="RIDER_API_KEY from .env" required></div>
+      <div><label for="user">User id</label><input id="user" type="number" min="1" value="7" required></div>
+      <div><label for="pickup">Pickup</label><select id="pickup"></select></div>
+      <div><label for="dest">Destination</label><select id="dest"></select></div>
+    </div>
+    <button id="go" type="submit">Book ride</button>
+    <p class="muted" id="msg" style="margin:10px 0 0"></p>
+  </form>
+
+  <section class="card" id="ride" hidden>
+    <div class="row">
+      <div><strong>Booking <span id="bid"></span></strong> <span class="muted">· served by <code id="replica"></code></span></div>
+      <span class="pill" id="status">…</span>
+    </div>
+    <p class="muted" id="summary" style="margin:8px 0 12px"></p>
+    <ol class="timeline" id="tl"></ol>
+  </section>
+
+  <section class="card">
+    <div class="row"><strong>Surge board</strong><span class="muted" id="surgeAt"></span></div>
+    <div id="surge" class="muted" style="margin-top:8px">loading…</div>
+  </section>
+</main>
+<script>
+const AREAS = ["Airport","BTM Layout","Banashankari","Bellandur","Electronic City","HSR Layout","Hebbal","Indiranagar","JP Nagar","Jayanagar","KR Puram","Koramangala","MG Road","Majestic","Marathahalli","Rajajinagar","Whitefield","Yelahanka"];
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+function fillAreas(sel, pick) {
+  for (const a of AREAS) { const o = document.createElement("option"); o.value = o.textContent = a; sel.appendChild(o); }
+  sel.value = pick;
+}
+fillAreas($("pickup"), "Koramangala"); fillAreas($("dest"), "Whitefield");
+
+const seen = new Set();
+function step(label, cls, detail) {
+  if (seen.has(label)) return; seen.add(label);
+  const li = document.createElement("li"); if (cls) li.className = cls;
+  li.innerHTML = `<div><strong>${esc(label)}</strong> <span class="t">${new Date().toLocaleTimeString()}</span></div>` +
+                 (detail ? `<div class="muted">${esc(detail)}</div>` : "");
+  $("tl").appendChild(li);
+}
+
+function show(r) {
+  const s = r.status || "UNKNOWN";
+  const pill = $("status"); pill.textContent = s;
+  pill.className = "pill " + (["COMPLETED","DRIVER_ASSIGNED","STARTED"].includes(s) ? "ok" : ["CANCELLED","NO_DRIVER","FAILED"].includes(s) ? "bad" : "warn");
+  if (s === "UNKNOWN") return;
+  $("summary").textContent = `${r.pickup} → ${r.destination} · fare ₹${r.fare} (surge ×${r.surge_multiplier}) · offers sent ${r.offers_sent}, rejected ${r.offers_rejected}`;
+  step("STORED in database", "done", "validator + consumer wrote the booking (idempotent insert)");
+  if (r.offers_sent > 0) step("OFFERED to nearest drivers", "", `dispatch round ${r.dispatch_round}, ${r.offers_sent} offer(s) so far`);
+  if (r.offers_rejected > 0) step(`REJECTED by ${r.offers_rejected} driver(s)`, "fail", "stored in driver_responses and ride.events; dispatcher re-offers");
+  if (r.driver) step("DRIVER ASSIGNED", "done", `${r.driver.name} · ${r.driver.vehicle} · ${r.driver.registration}`);
+  if (["STARTED","COMPLETED"].includes(s)) step("TRIP STARTED", "done");
+  if (s === "COMPLETED") step("TRIP COMPLETED", "done", "payment.requested published");
+  if (r.payment) step(`PAYMENT ${r.payment}`, "done", "payments row written exactly once");
+  if (s === "CANCELLED") step("CANCELLED", "fail", "driver released");
+  if (s === "NO_DRIVER") step("NO DRIVER found", "fail", "3 dispatch rounds without an accept");
+}
+
+$("book").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const key = $("key").value.trim();
+  $("go").disabled = true; $("msg").textContent = "Sending to Kafka…";
+  $("tl").innerHTML = ""; seen.clear();
+  try {
+    const res = await fetch("/v1/bookings", {
+      method: "POST",
+      headers: {"Content-Type": "application/json", "X-API-Key": key, "Idempotency-Key": "WEB-" + crypto.randomUUID()},
+      body: JSON.stringify({user_id: Number($("user").value), pickup_location: $("pickup").value, destination_location: $("dest").value})
+    });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.detail ? JSON.stringify(body.detail) : res.statusText);
+    $("ride").hidden = false; $("bid").textContent = body.booking_id; $("replica").textContent = res.headers.get("X-Replica") || "?";
+    $("msg").textContent = "";
+    step("ACCEPTED by API", "done", `Kafka confirmed (acks=all) · fare ₹${body.fare} · surge ×${body.surge_multiplier}`);
+    const es = new EventSource(`/v1/bookings/${body.booking_id}/stream?key=${encodeURIComponent(key)}`);
+    es.onmessage = (m) => show(JSON.parse(m.data));
+    es.onerror = () => es.close();
+  } catch (err) {
+    $("msg").textContent = "Failed: " + err.message;
+  } finally {
+    $("go").disabled = false;
+  }
+});
+
+async function surge() {
+  try {
+    const b = await (await fetch("/v1/surge")).json();
+    const hot = Object.entries(b).sort((x, y) => y[1].multiplier - x[1].multiplier).slice(0, 6);
+    $("surge").innerHTML = hot.map(([a, v]) =>
+      `<div class="row"><span>${esc(a)}</span><span>demand ${v.demand_5min} · drivers ${v.available_drivers ?? "?"} · <span class="pill ${v.multiplier > 1 ? "warn" : ""}">×${v.multiplier}</span></span></div>`).join("");
+    $("surgeAt").textContent = new Date().toLocaleTimeString();
+  } catch (_) { $("surge").textContent = "surge board unavailable"; }
+}
+surge(); setInterval(surge, 10000);
+</script>
+</body>
+</html>

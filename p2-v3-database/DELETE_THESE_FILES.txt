@@ -1,0 +1,6 @@
+db/checks.sql
+db/init/00_create_test_db.sql
+db/init/01_schema.sql
+db/init/02_seed_reference.sql
+db/init/03_payment_db.sh
+db/payment/schema.sql

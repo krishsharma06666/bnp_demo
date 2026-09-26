@@ -1,0 +1,39 @@
+# Person 2 - database.
+# Two modes (choose in .env):
+#   local    : this postgres container, database "ridehail"   (default; needed for the DB-down chaos demo)
+#   supabase : set DOCKER_DATABASE_URL (and DATABASE_URL for laptop scripts) in .env - see docs/DATABASE.md
+# db-migrate runs once at startup against whichever database is configured, then exits.
+# Every service that uses the database waits for db-migrate to finish successfully.
+services:
+  postgres:
+    image: postgres:16
+    container_name: postgres
+    environment:
+      POSTGRES_DB: ridehail
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: ${LOCAL_DB_PASSWORD:-app}
+    ports: ["127.0.0.1:5432:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./init-test-db.sql:/docker-entrypoint-initdb.d/00_test_db.sql:ro
+    command: ["postgres", "-c", "max_connections=300", "-c", "synchronous_commit=on"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d ridehail"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  db-migrate:
+    extends: {file: ../infra/compose/app.yml, service: app}
+    command: ["python", "-m", "db.migrate"]
+    environment:
+      # migrations need a real session (advisory lock) -> Supabase SESSION pooler :5432 if set
+      DATABASE_URL: ${DOCKER_MIGRATE_DATABASE_URL:-${DOCKER_DATABASE_URL:-postgresql://app:${LOCAL_DB_PASSWORD:-app}@postgres:5432/ridehail}}
+    restart: "no"
+    healthcheck: {disable: true}
+    depends_on:
+      postgres: {condition: service_healthy}
+
+volumes:
+  pgdata:

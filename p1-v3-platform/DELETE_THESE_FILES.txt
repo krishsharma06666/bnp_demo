@@ -1,0 +1,14 @@
+services/api/Dockerfile
+services/api/requirements.txt
+services/consumer/Dockerfile
+services/consumer/requirements.txt
+services/driver/Dockerfile
+services/driver/requirements.txt
+services/payment/Dockerfile
+services/payment/requirements.txt
+services/producer/Dockerfile
+services/producer/requirements.txt
+services/reconciler/Dockerfile
+services/reconciler/requirements.txt
+services/validator/Dockerfile
+services/validator/requirements.txt

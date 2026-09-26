@@ -1,0 +1,37 @@
+# Person 3 - how data ENTERS the system.
+#   api      : 3 copies behind the load balancer `lb` (http://localhost:8000). Swagger: /docs, tracker: /live
+#   producer : one-shot bulk loader (CSV files)   docker compose run --rm producer --file data/bookings.csv
+x-base: &base {file: ../../infra/compose/app.yml, service: app}
+
+services:
+  api:
+    extends: *base
+    command: ["uvicorn", "services.api.main:app", "--host", "0.0.0.0", "--port", "8000",
+              "--proxy-headers", "--forwarded-allow-ips", "*", "--no-server-header"]
+    deploy:
+      replicas: 3                               # high availability: one copy dies -> the other 2 answer
+    environment:
+      RATE_LIMIT_PER_CLIENT: "20"               # req/s per client (X-Client-Id), burst 40
+      RATE_LIMIT_BURST: "40"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/health',timeout=3)"]
+      interval: 5s
+      timeout: 4s
+      start_period: 20s
+      retries: 3
+    depends_on:
+      kafka-init: {condition: service_completed_successfully}
+      db-migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+
+  producer:
+    extends: *base
+    profiles: ["tools"]                         # not started by "docker compose up"
+    restart: "no"
+    healthcheck: {disable: true}
+    volumes:
+      - ../../data:/app/data:ro
+    entrypoint: ["python", "-m", "services.producer.producer"]
+    command: ["--file", "data/bookings.csv"]
+    depends_on:
+      kafka-init: {condition: service_completed_successfully}

@@ -1,0 +1,22 @@
+# Who must review a pull request that touches these paths. Replace @person-N with GitHub usernames.
+*                                   @person-1
+/common/                            @person-1
+/infra/                             @person-1
+/services/autopilot/                @person-1
+/.github/                           @person-1
+/docker-compose.yml                 @person-1
+/Dockerfile                         @person-1
+/db/                                @person-2
+/docs/DATABASE.md                   @person-2
+/services/api/                      @person-3
+/services/producer/                 @person-3
+/services/validator/                @person-4
+/services/dispatcher/               @person-4
+/services/consumer/                 @person-5
+/services/driver/                   @person-5
+/services/trip/                     @person-5
+/services/payment/                  @person-5
+/services/reconciler/               @person-6
+/services/simulator/                @person-6
+/monitoring/                        @person-6
+/loadtest/                          @person-6

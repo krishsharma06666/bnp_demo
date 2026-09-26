@@ -1,0 +1,42 @@
+# Shared base for every Python service (Person 1). Services use:
+#     extends: {file: ../../infra/compose/app.yml, service: app}
+# so hardening, env and health checks are defined ONCE.
+#
+# Secrets come from .env in the repo root (gitignored) through ${VARIABLE} substitution.
+services:
+  app:
+    build: {context: ../.., dockerfile: Dockerfile}
+    image: ride-middleware/app:latest
+    environment:
+      KAFKA_BOOTSTRAP: kafka:29092,kafka2:29092,kafka3:29092
+      DATABASE_URL: ${DOCKER_DATABASE_URL:-postgresql://app:${LOCAL_DB_PASSWORD:-app}@postgres:5432/ridehail}
+      PAYMENT_DATABASE_URL: ${DOCKER_PAYMENT_DATABASE_URL:-}      # empty = same database
+      DB_PREPARE_THRESHOLD: ${DB_PREPARE_THRESHOLD:-none}          # "none" is required for Supabase :6543
+      DB_POOL_MAX: ${DB_POOL_MAX:-5}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis-dev-password}@redis:6379/0
+      RIDER_API_KEY: ${RIDER_API_KEY:-dev-rider-key}
+      DRIVER_API_KEY: ${DRIVER_API_KEY:-dev-driver-key}
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-dev-admin-key}
+      API_URL: http://lb:8000
+      METRICS_PORT: "8000"
+      MAX_RETRIES: ${MAX_RETRIES:-3}
+      OFFER_TIMEOUT_S: ${OFFER_TIMEOUT_S:-15}
+    # ---- SecOps hardening -------------------------------------------------------------
+    user: "10001:10001"                     # never root
+    read_only: true                         # container filesystem can't be changed ...
+    tmpfs: ["/tmp:size=16m"]                # ... except a small scratch dir (heartbeat file)
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    mem_limit: 256m
+    pids_limit: 256
+    # ---- self-healing -------------------------------------------------------------------
+    restart: unless-stopped                 # crash -> Docker restarts it
+    healthcheck:                            # hang  -> unhealthy -> Autopilot restarts it
+      test: ["CMD", "python", "-m", "common.health"]
+      interval: 15s
+      timeout: 5s
+      start_period: 40s
+      retries: 4
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}

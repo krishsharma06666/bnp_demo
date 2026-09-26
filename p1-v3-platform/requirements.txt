@@ -1,0 +1,12 @@
+# Runtime - installed in the ONE app image (Dockerfile) and on your laptop for scripts.
+confluent-kafka==2.15.1
+pydantic==2.13.3
+prometheus-client==0.26.0
+psycopg[binary]==3.3.6
+psycopg-pool==3.3.3
+fastapi==0.141.1
+uvicorn[standard]==0.46.0
+httpx==0.28.1
+redis==8.1.0
+python-dotenv==1.2.2
+docker==7.2.0

@@ -1,0 +1,30 @@
+# Person 6. Grafana data sources (auto-provisioned).
+#  - Prometheus : live rates, lag, surge, autopilot, API per copy
+#  - RideDB     : exact totals from the tables (local postgres OR Supabase - set GRAFANA_DB_* in .env)
+apiVersion: 1
+deleteDatasources:
+  - {name: BookingDB, orgId: 1}
+  - {name: PaymentDB, orgId: 1}
+datasources:
+  - name: Prometheus
+    uid: prom
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+
+  - name: RideDB
+    uid: pg
+    type: postgres
+    access: proxy
+    url: $GRAFANA_DB_HOST
+    user: $GRAFANA_DB_USER
+    database: $GRAFANA_DB_NAME
+    secureJsonData:
+      password: $GRAFANA_DB_PASSWORD
+    jsonData:
+      database: $GRAFANA_DB_NAME
+      sslmode: $GRAFANA_DB_SSLMODE
+      postgresVersion: 1500
+      maxOpenConns: 5
+      timescaledb: false

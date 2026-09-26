@@ -1,0 +1,40 @@
+# Person 5 - writing to the database exactly once: bookings, driver answers, trips, payments.
+#   Replay DLQ: docker compose run --rm dlq-replay
+x-base: &base {file: ../../infra/compose/app.yml, service: app}
+x-deps: &deps
+  kafka-init: {condition: service_completed_successfully}
+  db-migrate: {condition: service_completed_successfully}
+
+services:
+  consumer:                                     # booking.validated -> bookings (+ ride.requested)
+    extends: *base
+    command: ["python", "-m", "services.consumer.consumer"]
+    depends_on: *deps
+
+  rejected-writer:                              # booking.rejected -> rejected_records
+    extends: *base
+    command: ["python", "-m", "services.consumer.rejected_writer"]
+    depends_on: *deps
+
+  driver-consumer:                              # driver.response -> driver_responses + assignment
+    extends: *base
+    command: ["python", "-m", "services.driver.driver_consumer"]
+    depends_on: *deps
+
+  trip-consumer:                                # trip.updates -> START / COMPLETE / CANCEL
+    extends: *base
+    command: ["python", "-m", "services.trip.trip_consumer"]
+    depends_on: *deps
+
+  payment-consumer:                             # payment.requested -> payments (3 retries -> DLQ)
+    extends: *base
+    command: ["python", "-m", "services.payment.payment_consumer"]
+    depends_on: *deps
+
+  dlq-replay:
+    extends: *base
+    profiles: ["tools"]
+    restart: "no"
+    healthcheck: {disable: true}
+    command: ["python", "-m", "services.payment.dlq_replay"]
+    depends_on: *deps

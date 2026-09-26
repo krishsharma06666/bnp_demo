@@ -1,0 +1,10 @@
+# Laptop / CI only: tests, linters, load test.   python -m pip install -r requirements-dev.txt
+-r requirements.txt
+pytest==8.*
+fakeredis==2.38.0
+pgserver            # embedded PostgreSQL for DB tests without docker (tests skip if missing)
+locust==2.46.6
+ruff
+pyflakes
+bandit
+pip-audit

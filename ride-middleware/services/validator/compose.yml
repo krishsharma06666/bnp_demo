@@ -1,0 +1,26 @@
+# Person 4 - middleware LOGIC: validation + smart dispatch.
+#   Scale by hand:  docker compose up -d --scale validator=3 --scale dispatcher=2
+#   (or let the Autopilot do it when Kafka lag grows)
+x-base: &base {file: ../../infra/compose/app.yml, service: app}
+
+services:
+  validator:
+    extends: *base
+    command: ["python", "-m", "services.validator.validator"]
+    environment:
+      VELOCITY_LIMIT: "5"                       # max bookings per user per minute via the API
+    depends_on:
+      kafka-init: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+
+  dispatcher:
+    extends: *base
+    command: ["python", "-m", "services.dispatcher.dispatcher"]
+    environment:
+      DRIVERS_PER_OFFER: "3"
+      MAX_DISPATCH_ROUNDS: "3"
+      SWEEP_INTERVAL_S: "2"
+    depends_on:
+      kafka-init: {condition: service_completed_successfully}
+      db-migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}

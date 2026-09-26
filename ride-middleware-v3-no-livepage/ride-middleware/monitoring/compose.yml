@@ -1,0 +1,42 @@
+# Person 6 - observability.
+#   Grafana    http://localhost:3000  (admin / GRAFANA_ADMIN_PASSWORD from .env) -> "Ride Middleware"
+#   Prometheus http://localhost:9090  (alerts: http://localhost:9090/alerts)
+services:
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: prometheus
+    ports: ["127.0.0.1:9090:9090"]
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+    restart: unless-stopped
+
+  kafka-exporter:                              # consumer LAG per group -> Prometheus (Autopilot reads it)
+    image: danielqsj/kafka-exporter:v1.8.0
+    container_name: kafka-exporter
+    command: ["--kafka.server=kafka:29092", "--kafka.server=kafka2:29092", "--kafka.server=kafka3:29092"]
+    depends_on:
+      kafka-init: {condition: service_completed_successfully}
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.4.2
+    container_name: grafana
+    ports: ["127.0.0.1:3000:3000"]
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/pipeline.json
+      # the SQL panels read the same database the services write to (local postgres or Supabase)
+      GRAFANA_DB_HOST: ${GRAFANA_DB_HOST:-postgres:5432}
+      GRAFANA_DB_NAME: ${GRAFANA_DB_NAME:-ridehail}
+      GRAFANA_DB_USER: ${GRAFANA_DB_USER:-app}
+      GRAFANA_DB_PASSWORD: ${GRAFANA_DB_PASSWORD:-${LOCAL_DB_PASSWORD:-app}}
+      GRAFANA_DB_SSLMODE: ${GRAFANA_DB_SSLMODE:-disable}
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on: [prometheus]
+    restart: unless-stopped
