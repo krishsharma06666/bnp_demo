@@ -1,0 +1,25 @@
+# Person 6. Grafana gets two data sources automatically:
+#  - Prometheus: live rates, retries (from service /metrics)
+#  - PostgreSQL: exact totals straight from the tables (survive service restarts)
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    uid: prom
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+
+  - name: BookingDB
+    uid: pg
+    type: postgres
+    access: proxy
+    url: postgres:5432
+    user: app
+    database: booking_db
+    secureJsonData:
+      password: app
+    jsonData:
+      database: booking_db
+      sslmode: disable
+      postgresVersion: 1600
